@@ -1,0 +1,10 @@
+[project]
+name = "perceptual-models"
+version = "0.1.0"
+description = "Perceptual models library."
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "huggingface-hub>=1.1.5",
+    "torch>=2.8.0",
+]
