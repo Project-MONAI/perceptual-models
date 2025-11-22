@@ -1,0 +1,253 @@
+from torch import Tensor
+from typing import List, Type, Union
+import os
+from typing import Optional
+
+import torch
+import torch.nn as nn
+from huggingface_hub import hf_hub_download
+
+# Layers
+
+def conv3x3x3(in_planes: int, out_planes: int, stride: int = 1, dilation: int = 1) -> nn.Conv3d:
+    """3x3x3 convolution with padding"""
+    return nn.Conv3d(
+        in_planes,
+        out_planes,
+        kernel_size=3,
+        dilation=dilation,
+        stride=stride,
+        padding=dilation,
+        bias=False,
+    )
+
+
+def conv1x1x1(in_planes: int, out_planes: int, stride: int = 1) -> nn.Conv3d:
+    """1x1x1 convolution"""
+    return nn.Conv3d(in_planes, out_planes, kernel_size=1, stride=stride, bias=False)
+
+
+# Blocks
+class BasicBlock(nn.Module):
+    expansion: int = 1
+
+    def __init__(
+        self,
+        inplanes: int,
+        planes: int,
+        stride: int = 1,
+        downsample: Optional[nn.Module] = None,
+        dilation: int = 1,
+    ) -> None:
+        super().__init__()
+        self.conv1 = conv3x3x3(inplanes, planes, stride=stride, dilation=dilation)
+        self.bn1 = nn.BatchNorm3d(planes)
+        self.relu = nn.ReLU(inplace=True)
+        self.conv2 = conv3x3x3(planes, planes, dilation=dilation)
+        self.bn2 = nn.BatchNorm3d(planes)
+        self.downsample = downsample
+        self.stride = stride
+        self.dilation = dilation
+
+    def forward(self, x: Tensor) -> Tensor:
+        residual = x
+
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = self.relu(out)
+        out = self.conv2(out)
+        out = self.bn2(out)
+
+        if self.downsample is not None:
+            residual = self.downsample(x)
+
+        out += residual
+        out = self.relu(out)
+
+        return out
+
+
+class Bottleneck(nn.Module):
+    expansion: int = 4
+
+    def __init__(
+        self,
+        inplanes: int,
+        planes: int,
+        stride: int = 1,
+        downsample: Optional[nn.Module] = None,
+        dilation: int = 1,
+    ) -> None:
+        super().__init__()
+        self.conv1 = conv1x1x1(inplanes, planes)
+        self.bn1 = nn.BatchNorm3d(planes)
+        self.conv2 = conv3x3x3(
+            planes,
+            planes,
+            stride=stride,
+            dilation=dilation,
+        )
+        self.bn2 = nn.BatchNorm3d(planes)
+        self.conv3 = conv1x1x1(planes, planes * 4)
+        self.bn3 = nn.BatchNorm3d(planes * 4)
+        self.relu = nn.ReLU(inplace=True)
+        self.downsample = downsample
+        self.stride = stride
+        self.dilation = dilation
+
+    def forward(self, x: Tensor) -> Tensor:
+        residual = x
+
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = self.relu(out)
+
+        out = self.conv2(out)
+        out = self.bn2(out)
+        out = self.relu(out)
+
+        out = self.conv3(out)
+        out = self.bn3(out)
+
+        if self.downsample is not None:
+            residual = self.downsample(x)
+
+        out += residual
+        out = self.relu(out)
+
+        return out
+
+
+class ResNet(nn.Module):
+    def __init__(
+        self,
+        block: Type[Union[BasicBlock, Bottleneck]],
+        layers: List[int],
+    ) -> None:
+        super().__init__()
+
+        self.inplanes = 64
+        self.layers = layers
+
+        self.conv1 = nn.Conv3d(1, self.inplanes, kernel_size=7, stride=2, padding=3, bias=False)
+        self.bn1 = nn.BatchNorm3d(self.inplanes)
+        self.relu = nn.ReLU(inplace=True)
+        self.maxpool = nn.MaxPool3d(kernel_size=3, stride=2, padding=1)
+        self.layer1 = self._make_layer(block, 64, layers[0])
+        self.layer2 = self._make_layer(block, 128, layers[1], stride=2)
+        self.layer3 = self._make_layer(block, 256, layers[2], stride=1, dilation=2)
+        self.layer4 = self._make_layer(block, 512, layers[3], stride=1, dilation=4)
+
+    def _make_layer(
+        self, block: Type[Union[BasicBlock, Bottleneck]], planes: int, blocks: int, stride: int = 1, dilation: int = 1
+    ):
+        downsample = None
+        if stride != 1 or self.inplanes != planes * block.expansion:
+            downsample = nn.Sequential(
+                conv1x1x1(
+                    self.inplanes,
+                    planes * block.expansion,
+                    stride=stride,
+                ),
+                nn.BatchNorm3d(planes * block.expansion),
+            )
+
+        layers = []
+        layers.append(
+            block(
+                self.inplanes,
+                planes,
+                stride=stride,
+                dilation=dilation,
+                downsample=downsample,
+            )
+        )
+        self.inplanes = planes * block.expansion
+        for i in range(1, blocks):
+            layers.append(block(self.inplanes, planes, dilation=dilation))
+
+        return nn.Sequential(*layers)
+
+    def forward(self, x: Tensor) -> Tensor:
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.relu(x)
+        x = self.maxpool(x)
+
+        x = self.layer1(x)
+        x = self.layer2(x)
+        x = self.layer3(x)
+        x = self.layer4(x)
+
+        return x
+
+
+def download_model(filename:str, 
+                   cache_dir: Optional[str] = None,
+                   ) -> str:
+    """Downloads a model from the Huggingface MONAI library.
+
+    Args:
+        filename (str): name of the pth file. 
+        cache_dir (Optional[str], optional): cache directory (-> torch.hub cache dir). Defaults to None.
+
+    Returns:
+        str: file path of the downloaded. model.
+    """
+
+    hf_hub_download(repo_id='MONAI/checkpoints',
+                    filename=filename,
+                    cache_dir=cache_dir)
+    
+    return os.path.join(cache_dir, filename)
+    
+
+# Medicalnet models
+
+def medicalnet_resnet10_23datasets(
+    cache_dir: Optional[str] = None,
+    filename: str = "medicalnet_resnet_10_23dataset.pth",
+) -> ResNet:
+    
+    """Instances and loads the weights of the MedicalNet 2/3 Datasets based on ResNet10.
+
+    Returns:
+        ResNet: model with pretrained weights.
+    """
+
+    model = ResNet(BasicBlock, [1, 1, 1, 1])
+    cached_file = download_model(filename=filename,
+                                 cache_dir=cache_dir)
+
+    # Fix checkpoints saved with DataParallel wrapper
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    pretrained_state_dict = torch.load(cached_file, map_location=device)
+    pretrained_state_dict = pretrained_state_dict["state_dict"]
+    pretrained_state_dict = {k.replace("module.", ""): v for k, v in pretrained_state_dict.items()}
+    model.load_state_dict(pretrained_state_dict)
+
+    return model
+
+
+def medicalnet_resnet50_23datasets(
+    cache_dir: Optional[str] = None,
+    filename: str = "resnet_50_23dataset.pth",
+) -> ResNet:
+    
+    """Instances and loads the weights of the MedicalNet 2/3 Datasets based on ResNet50.
+    Returns:
+        ResNet: model with pretrained weights.
+    """
+
+    model = ResNet(Bottleneck, [3, 4, 6, 3])
+    pretrained_state_dict = download_model(filename=filename,
+                                           cache_dir=cache_dir)
+
+    # Fix checkpoints saved with DataParallel wrapper
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    pretrained_state_dict = torch.load(pretrained_state_dict, map_location=device)
+    pretrained_state_dict = pretrained_state_dict["state_dict"]
+    pretrained_state_dict = {k.replace("module.", ""): v for k, v in pretrained_state_dict.items()}
+    model.load_state_dict(pretrained_state_dict)
+
+    return model
