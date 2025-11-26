@@ -2,7 +2,7 @@ from torch import Tensor
 from typing import List, Type, Union
 import os
 from typing import Optional
-
+import torch.hub
 import torch
 import torch.nn as nn
 from huggingface_hub import hf_hub_download
@@ -195,11 +195,10 @@ def download_model(filename:str,
         str: file path of the downloaded. model.
     """
 
-    hf_hub_download(repo_id='MONAI/checkpoints',
-                    filename=filename,
-                    cache_dir=cache_dir)
-    
-    return os.path.join(cache_dir, filename)
+    output_file = hf_hub_download(repo_id='MONAI/checkpoints',
+                                  filename=filename,
+                                  cache_dir=cache_dir)
+    return output_file
     
 
 # Medicalnet models
@@ -214,6 +213,11 @@ def medicalnet_resnet10_23datasets(
     Returns:
         ResNet: model with pretrained weights.
     """
+
+
+    if cache_dir is None:
+        hub_dir = torch.hub.get_dir()
+        cache_dir = os.path.join(hub_dir)
 
     model = ResNet(BasicBlock, [1, 1, 1, 1])
     cached_file = download_model(filename=filename,
@@ -231,13 +235,18 @@ def medicalnet_resnet10_23datasets(
 
 def medicalnet_resnet50_23datasets(
     cache_dir: Optional[str] = None,
-    filename: str = "resnet_50_23dataset.pth",
+    filename: str = "medicalnet_resnet50_23datasets.pth",
 ) -> ResNet:
     
     """Instances and loads the weights of the MedicalNet 2/3 Datasets based on ResNet50.
     Returns:
         ResNet: model with pretrained weights.
     """
+
+
+    if cache_dir is None:
+        hub_dir = torch.hub.get_dir()
+        cache_dir = os.path.join(hub_dir)
 
     model = ResNet(Bottleneck, [3, 4, 6, 3])
     pretrained_state_dict = download_model(filename=filename,

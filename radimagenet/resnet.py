@@ -136,11 +136,11 @@ def download_model(filename:str,
         str: file path of the downloaded. model.
     """
 
-    hf_hub_download(repo_id='MONAI/checkpoints',
+    output_file = hf_hub_download(repo_id='MONAI/checkpoints',
                     filename=filename,
                     cache_dir=cache_dir)
     
-    return os.path.join(cache_dir, filename)
+    return output_file
     
 
 # RadImageNet ResNet50
@@ -151,24 +151,14 @@ def radimagenet_resnet50(
 ):
     if cache_dir is None:
         hub_dir = torch.hub.get_dir()
-        model_dir = os.path.join(hub_dir, "checkpoints")
-
-    try:
-        os.makedirs(model_dir)
-    except OSError as e:
-        if e.errno == errno.EEXIST:
-            # Directory already exists, ignore.
-            pass
-        else:
-            # Unexpected OSError, re-raise.
-            raise
+        cache_dir = os.path.join(hub_dir)
 
     filename = file_name
 
     cached_file = os.path.join(cache_dir, filename)
 
     if not os.path.exists(cached_file):
-        cached_file = download_model(filename, cache_dir=model_dir)
+        cached_file = download_model(filename, cache_dir=cache_dir)
     
 
     model = ResNet50()
