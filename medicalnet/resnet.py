@@ -5,7 +5,7 @@ from typing import Optional
 import torch.hub
 import torch
 import torch.nn as nn
-from huggingface_hub import hf_hub_download
+import monai
 
 # Layers
 
@@ -195,10 +195,11 @@ def download_model(filename:str,
         str: file path of the downloaded. model.
     """
 
-    output_file = hf_hub_download(repo_id='MONAI/checkpoints',
-                                  filename=filename,
-                                  cache_dir=cache_dir)
-    return output_file
+    monai.apps.utils.download_url(
+    os.path.join("https://huggingface.co/MONAI/checkpoints/resolve/main", filename),
+    filepath=os.path.join(cache_dir, 'monai_checkpoints', filename)
+    )
+    return os.path.join(cache_dir, 'monai_checkpoints', filename)
     
 
 # Medicalnet models

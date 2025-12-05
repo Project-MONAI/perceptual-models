@@ -6,5 +6,6 @@ readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
     "huggingface-hub>=1.1.5",
+    "monai>=1.5.1",
     "torch>=2.8.0",
 ]

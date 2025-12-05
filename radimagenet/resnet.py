@@ -6,7 +6,8 @@ from typing import Optional
 import torch
 import torch.nn as nn
 from torch import Tensor
-from huggingface_hub import hf_hub_download
+import monai
+
 
 # Layers
 
@@ -136,13 +137,13 @@ def download_model(filename:str,
         str: file path of the downloaded. model.
     """
 
-    output_file = hf_hub_download(repo_id='MONAI/checkpoints',
-                    filename=filename,
-                    cache_dir=cache_dir)
+    monai.apps.utils.download_url(
+        "https://huggingface.co/MONAI/checkpoints/resolve/main/RadImageNet-ResNet50_notop.pth", 
+        filepath=os.path.join(cache_dir, 'monai_checkpoints', filename)
+        )
     
-    return output_file
+    return os.path.join(cache_dir, 'monai_checkpoints', filename)
     
-
 # RadImageNet ResNet50
 
 def radimagenet_resnet50(
